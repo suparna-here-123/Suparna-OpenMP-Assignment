@@ -332,23 +332,78 @@ int main( int argc, char * argv[] ) {
                         // Invalidate the cache entry for memory block
                         // If the cache no longer has the memory block ( replaced by
                         // a different block ), then do nothing
+
+                        // Iterate through cache to see if cacheline exists
+                        
+                        for ( int i = 0; i < CACHE_SIZE; i ++ ){
+                            if ((node.cache)[i].address == msg.address){
+                                (node.cache)[i].state = INV;
+                            }
+                        }
                         break;
 
                     case WRITE_REQUEST:
                         // IMPLEMENT
                         // This is in the home node
                         // Write miss occured in requesting node
-                        // If the directory state is,
+                        // If the directory state is
+                        directoryEntryState state = (node.directory)[memIndex].state;
+                        switch (state){
                         // U:   no cache contains this memory block, and requesting
                         //      node directly becomes the owner node, use REPLY_WR
+                        case U :
+                            // Step 1 : Changing the directory state to EM
+                            (node.directory)[memIndex].state = EM;
+
+                            // Step 2 : Sending message
+                            message writeReplyMsg;
+                            writeReplyMsg.type = REPLY_WR;
+                            writeReplyMsg.sender = omp_get_thread_num();
+                            writeReplyMsg.address = msg.address;
+                            writeReplyMsg.value = (node.memory)[memIndex];
+                            sendMessage(msg.sender, writeReplyMsg);
+                            
                         // S:   other caches contain this memory block in clean state
                         //      which have to be invalidated
                         //      send sharers list to new owner node using REPLY_ID
                         //      update directory
+                        case S :
+                            // Step 1 : Update directory entry state to EM
+                            (node.directory)[memIndex].state = EM;
+
+                            // Step 2 : Get list of sharers (excluding requesting block coz otherwise it'll also get set to invalid)
+                            byte senderByte = num2Byte(msg.sender);
+                            byte sendBitVector = (node.directory)[memIndex].bitVector & (~senderByte);
+
+                            // Step 3 : Send message
+                            message writeReplyMsg;
+                            writeReplyMsg.type = REPLY_ID;
+                            writeReplyMsg.sender = omp_get_thread_num();
+                            writeReplyMsg.address = msg.address;
+                            writeReplyMsg.value = (node.memory)[memIndex];
+                            writeReplyMsg.bitVector = sendBitVector;
+                            sendMessage(msg.sender, writeReplyMsg);                            
+
+                            
                         // EM:  one other cache contains this memory block, which
                         //      can be in EXCLUSIVE or MODIFIED
                         //      send WRITEBACK_INV to the old owner, to flush value
                         //      into memory and invalidate cacheline
+                        case EM :
+                            // Step 1 : Drafting message
+                            message writeReplyMsg;
+                            writeReplyMsg.type = WRITEBACK_INV;
+                            writeReplyMsg.sender = omp_get_thread_num();
+                            writeReplyMsg.address = msg.address;
+                            writeReplyMsg.secondReceiver = msg.sender;
+
+                            // Step 2 : Finding who the old owner is
+                            int oldOwner = byte2Num((node.directory)[memIndex].bitVector);
+
+                            // Step 3 : Send message
+                            sendMessage(oldOwner, writeReplyMsg);
+                            
+                        }
                         break;
 
                     case REPLY_WR:
@@ -356,6 +411,15 @@ int main( int argc, char * argv[] ) {
                         // This is in the requesting ( new owner ) node
                         // Handle cache replacement if needed, and load the memory
                         // block into cache
+                        
+                        // IS THIS CORRECT?? - seeing if cacheline is occupied
+                        if ((node.cache)[cacheIndex]){
+                            handleCacheReplacement(omp_get_thread_num(), node.cache[cacheIndex]);
+                        }
+
+                        cacheLine CL = node.cache[cacheIndex];
+                        CL.address = msg.address;
+                        CL.state = EXCLUSIVE;  
                         break;
 
                     case WRITEBACK_INV:
@@ -366,6 +430,21 @@ int main( int argc, char * argv[] ) {
                         // new owner node
                         // If home node is the new owner node, dont send twice
                         // Invalidate the cacheline
+
+                        // Step 1 : Drafting message for flush
+                        message flushMsg;
+                        flushMsg.type = FLUSH_INVACK;
+                        flushMsg.sender = omp_get_thread_num();
+                        flushMsg.address = msg.address;
+                        flushMsg.value = node.cache[cacheIndex].value;
+                        
+                        // Step 2 : Send same message to requesting node (if not same as home node)
+                        sendMessage(homeNodeNum, flushMsg);
+                        if (homeNodeNum != msg.sender) { sendMessage(msg.secondReceiver, flushMsg); }
+
+                        // Step 3 : Invalidate cache line
+                        node.cache[cacheIndex].state = INVALID;
+
                         break;
 
                     case FLUSH_INVACK:
