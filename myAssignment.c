@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <omp.h>
 #include <stdlib.h>
-hi
+
 
 #define NUM_PROCS 4
 #define CACHE_SIZE 4
@@ -256,7 +256,6 @@ int main( int argc, char * argv[] ) {
                         if (msg.sender != homeNodeNum) { sendMessage(msg.sender, flushMsg); }
                         break;
                     
-                    // (????????????)
                     case FLUSH:
                         // IMPLEMENT
                         // If in home node
@@ -266,9 +265,13 @@ int main( int argc, char * argv[] ) {
                         // Step 1 : Checking if I'm the home node for the message received
                         if (omp_get_thread_num() == homeNodeNum)
                         {
+                            // updating memory block status?
+                            (node.memory)[memIndex] = msg.value;
                             // Updating dir status to SHARED REGARDLESS (??)
                             (node.directory)[memIndex].state = SHARED;
-                            //(node.directory)[memIndex].bitVector
+                            (node.directory)[memIndex].bitVector = msg.bitVector;
+
+                            // if home node was also requesting node???
                             
                         }
                         // If in requesting node, load block into cache
@@ -277,8 +280,11 @@ int main( int argc, char * argv[] ) {
                         // IMPORTANT: there can be cases where home node is same as
                         // requesting node, which need to be handled appropriately
                         else{
-
-
+                        // if you have to evict cacheline
+                        if (node.cache[cacheIndex].address != 0xFF){ handleCacheReplacement(omp_get_thread_num(), node.cache[cacheIndex]); }
+                        node.cache[cacheIndex].address = msg.address;
+                        node.cache[cacheIndex].value = msg.value;
+                        node.cache[cacheIndex].state = S;
                         }
                         
                         break;
@@ -298,18 +304,16 @@ int main( int argc, char * argv[] ) {
                         upgradeReplyMsg.type = REPLY_ID;
                         upgradeReplyMsg.sender = omp_get_thread_num();
                         upgradeReplyMsg.address = msg.address;
-                        
-                        
+
                         byte flusherByte = num2Byte(msg.sender);
-                        upgradeReplyMsg.bitVector = (node.directory)[memIndex].bitVector & ~flusherByte;    // excludes the requesting node here
+                        upgradeReplyMsg.bitVector = node.directory[memIndex].bitVector & ~flusherByte;
                         sendMessage(msg.sender, upgradeReplyMsg);
 
                         // Step 2 : updating directory
                         (node.directory)[memIndex].state = EM;
-                        (node.directory)[memIndex].bitVector = flusherByte;
 
                         break;
-
+                    
                     case REPLY_ID:
                         // IMPLEMENT
                         // This is in the requesting ( new owner ) node
@@ -328,13 +332,15 @@ int main( int argc, char * argv[] ) {
                         
                         // Handle cache replacement if needed, and load the block
                         // into the cacheline
+                        if (node.cache[cacheIndex].address != 0xFF) { handleCacheReplacement(omp_get_thread_num(), node.cache[cacheIndex]);}
+                        node.cache[cacheIndex].address = msg.address;
+                        node.cache[cacheIndex].value = msg.value;
+                        // Step 3 : Setting cache line state to MODIFIED ??
+                        (node.cache)[cacheIndex].state = MODIFIED;
                         // NOTE: Ideally, we should update the owner node cache line
                         // after we receive INV_ACK from every sharer, but for that
                         // we will have to keep track of all the INV_ACKs.
-                        // Instead, we will assume that INV does not fail.
-
-                        // Step 3 : Setting cache line state to MODIFIED
-                        (node.cache)[cacheIndex].state = MODIFIED;
+                        // Instead, we will assume that INV does not fail.                       
                         break;
 
                     case INV:
@@ -403,6 +409,9 @@ int main( int argc, char * argv[] ) {
                             writeReplyMsg.type = WRITEBACK_INV;
                             writeReplyMsg.sender = omp_get_thread_num();
                             writeReplyMsg.address = msg.address;
+                            // sending old owner the number of requesting node also
+                            // write miss in requestor on EM -> WritebackInv to oldOwner -> who flushes to home and requestor
+                            // -> home writes new value in memory, requestor updates cacheline
                             writeReplyMsg.secondReceiver = msg.sender;
 
                             // Step 2 : Finding who the old owner is
@@ -419,15 +428,12 @@ int main( int argc, char * argv[] ) {
                         // This is in the requesting ( new owner ) node
                         // Handle cache replacement if needed, and load the memory
                         // block into cache
-                        
-                        // IS THIS CORRECT?? - seeing if cacheline is occupied
                         if ((node.cache)[cacheIndex].address != 0xFF){
                             handleCacheReplacement(omp_get_thread_num(), node.cache[cacheIndex]);
                         }
-
-                        cacheLine CL = node.cache[cacheIndex];
-                        CL.address = msg.address;
-                        CL.state = EXCLUSIVE;  
+                        node.cache[cacheIndex].address = msg.address;
+                        node.cache[cacheIndex].value = msg.value;
+                        node.cache[cacheIndex].state = EXCLUSIVE;  
                         break;
 
                     case WRITEBACK_INV:
@@ -445,6 +451,7 @@ int main( int argc, char * argv[] ) {
                         flushMsg.sender = omp_get_thread_num();
                         flushMsg.address = msg.address;
                         flushMsg.value = node.cache[cacheIndex].value;
+                        flushMsg.secondReceiver = msg.secondReceiver;
                         
                         // Step 2 : Send same message to requesting node (if not same as home node)
                         sendMessage(homeNodeNum, flushMsg);
@@ -458,11 +465,22 @@ int main( int argc, char * argv[] ) {
                     case FLUSH_INVACK:
                         // IMPLEMENT - HOW???
                         // If in home node, update directory and memory
-                        // The bit vector should have only the new owner node set
                         // Flush the value from the old owner to memory
-                        //
+                        // The bit vector should have only the new owner node set
+                        if (omp_get_thread_num() == homeNodeNum)
+                        {
+                            node.memory[memIndex] = msg.value;
+                            node.directory[memIndex].bitVector = num2Byte(msg.secondReceiver);
+                            node.directory[memIndex].state = EM;
+                        }
                         // If in requesting node, handle cache replacement if needed,
                         // and load block into cache
+                        else {
+                            if (node.cache[cacheIndex].address != 0xFF) { handleCacheReplacement(omp_get_thread_num(), node.cache[cacheIndex]); }
+                            node.cache[cacheIndex].address = msg.address;
+                            node.cache[cacheIndex].value = msg.value;
+                            node.cache[cacheIndex].status = EXCLUSIVE;
+                        }
                         break;
                     
                     case EVICT_SHARED:
