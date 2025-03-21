@@ -502,16 +502,27 @@ int main( int argc, char * argv[] ) {
                             node.directory[memIndex].bitVector = node.directory[memIndex].bitVector & (~senderByte);
 
                             // Step B : Check how many sharers and update directory state
-                            if (!node.directory[memIndex].bitVector){ node.directory[memIndex].state = U; }
-                            else { node.directory[memIndex].state = EM; }
-
-                            // Step C : Inform remaining sharer to change state
-                            int remOwner = (int)((node.directory[memIndex].bitVector));
-                            message evictSharedMsg;
-                            evictSharedMsg.type = EVICT_SHARED;
-                            evictSharedMsg.sender = omp_get_thread_num();
-                            evictSharedMsg.address = msg.address;
-                            sendMessage(remOwner, evictSharedMsg);
+                            if (node.directory[memIndex].bitVector == 0x00){ node.directory[memIndex].state = U; }
+                            else {
+                                // checking if one or more sharers are remaining
+                                int numSharers;
+                                byte sharerBitVector = node.directory[memIndex].bitVector;
+                                while (sharerBitVector != 0x00){
+                                    if (sharerBitVector & 1) { numSharers ++; }
+                                    sharerBitVector >>& 1;
+                                }
+                                if (numSharers == 1) { 
+                                    node.directory[memIndex].state = EM; 
+                                    // send message to sole owner to change cacheline state from shared to exclusive
+                                    message soleOwnerMsg;
+                                    soleOwnerMsg.type = EVICT_SHARED;
+                                    soleOwnerMsg.sender = omp_get_thread_num();
+                                    soleOwnerMsg.address = msg.address;
+                                    
+                                }
+                                // even after one sharer left, more than one sharers exist so state (remains) S
+                                else { node.directory[memIndex].state = S; }
+                            }
                         }
                         // If in remaining sharer ( new owner ), update cacheline
                         // from SHARED to EXCLUSIVE
@@ -519,19 +530,16 @@ int main( int argc, char * argv[] ) {
                         break;
 
                     case EVICT_MODIFIED:
-                        // IMPLEMENT
+                        // IMPLEMENT ???
                         // This is in home node,
                         // Requesting node evicted a cacheline which was in MODIFIED
                         // Flush value to memory
+                        node.memory[memIndex] = msg.value;
                         // Remove the old node from bitvector HINT: since it was in
                         // modified state, not other node should have had that
                         // memory block in a valid state its cache
-                        
-                        // Step 1 : Flush value to memory
-                        (node.memory)[memIndex] = msg.value;
-
                         // Step 2 : Are sharers with invalid state stored in bitvector???
-
+                        node.directory[memIndex].bitVector = ;
                         break;
                 }
             }
