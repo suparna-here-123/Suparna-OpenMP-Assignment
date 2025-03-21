@@ -165,34 +165,38 @@ int main( int argc, char * argv[] ) {
                         // This is in the home node
                         // If directory state is,
                         // Step 1 : Accessing directory state of block referred to in the message
-                        directoryEntryState state = (node.directory[memBlockAddr]).state;
+                        directoryEntryState state = (node.directory[memIndex]).state;
                         switch (state)
                         {
                             // U: update directory and send value using REPLY_RD
                             case U :
-                                // Updating state in directory to EM
-                                node.directory[memBlockAddr].state = EM;
-
                                 message readReqMsg;
                                 readReqMsg.type = REPLY_RD;
                                 readReqMsg.sender = omp_get_thread_num();
                                 readReqMsg.address = msg.address;
-                                readReqMsg.value = node.memory[memBlockAddr];
+                                readReqMsg.value = node.memory[memIndex];
                                 // Also sending sharers list coz it's needed to set appropriate cacheline status to EXCLUSIVE or SHARED in receiver
-                                readReqMsg.bitVector = node.directory[memBlockAddr].bitVector;
+                                readReqMsg.bitVector = node.directory[memIndex].bitVector;
                                 sendMessage(homeNodeNum, readReqMsg);
+
+                                  // Updating directory
+                                node.directory[memIndex].state = EM;
+                                node.directory[memIndex].bitVector = num2Byte(msg.sender);
                                 break;
 
                             // S: update directory and send value using REPLY_RD
                             case S :
-                                node.directory->bitVector = node.directory->bitVector & procNodeAddr;
-
                                 message readReqMsg;
                                 readReqMsg.type = REPLY_RD;
                                 readReqMsg.sender = omp_get_thread_num();
                                 readReqMsg.address = msg.address;
                                 readReqMsg.value = node.memory[memBlockAddr];
+                                // sharers list should not include new sharer no?
+                                readReqMsg.bitVector = node.directory[memIndex].bitVector;
                                 sendMessage(homeNodeNum, readReqMsg);
+
+                                // Updating directory
+                                (node.directory[memIndex]).bitVector = (node.directory[memIndex]).bitVector & procNodeAddr;
                                 break;
                             
                             // EM: forward request to the current owner node for
@@ -220,7 +224,7 @@ int main( int argc, char * argv[] ) {
                         // Read in the memory block sent in the message to cache
                         // Handle state of the memory block appropriately
                         // Checking if there are already some other processors sharing this value
-                        if (!msg.bitVector) { node.cache[cacheIndex].state = SHARED; }
+                        if (msg.bitVector != 0x00) { node.cache[cacheIndex].state = SHARED; }
                         else { node.cache[cacheIndex].state = EXCLUSIVE; }
                                                 
                         break;
@@ -238,6 +242,8 @@ int main( int argc, char * argv[] ) {
                         flushMsg.sender = omp_get_thread_num();
                         flushMsg.address = msg.address;
                         flushMsg.value = (node.cache)[cacheIndex].value;
+                        // sharers are now this node and the requesting node
+                        flushMsg.bitVector = num2Byte(omp_get_thread_num()) & num2Byte(msg.sender);
 
                         // Step 2 : Changing cacheline state to shared
                         (node.cache)[cacheIndex].state = SHARED;
