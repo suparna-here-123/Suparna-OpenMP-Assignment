@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <omp.h>
 #include <stdlib.h>
+hi
 
 #define NUM_PROCS 4
 #define CACHE_SIZE 4
