@@ -4,21 +4,28 @@
 typedef unsigned char byte;
 
 int main(){
-    byte bitVector = 0b01010101;
-    printf("Original %d\n", bitVector);
+    //byte bitVector = 0b01010101;
+    //printf("Original %d\n", bitVector);
 
-    int procNum = 7;
-    if (bitVector == 0x00){
-        printf("Send message to node 0\n");
-    }else{
-        while (bitVector != 0x00){
-            if (bitVector & 1)
-                printf("Send message to %d\n", procNum);
-            bitVector >>= 1;
-            procNum --;
-        }
-    }
-    printf("Changed %d\n", bitVector);
+    int x = 0;
+    byte bX = 1 << x;
+    if (x == 0x00) { printf("Yes\n"); }
+    else { printf("No\n"); }
+    
+
+    // int procNum = 7;
+    // if (bitVector == 0x00){
+    //     printf("Send message to node 0\n");
+    // }else{
+    //     while (bitVector != 0x00){
+    //         if (bitVector & 1)
+    //             printf("Send message to %d\n", procNum);
+    //         bitVector >>= 1;
+    //         procNum --;
+    //     }
+    // }
+    // printf("Changed %d\n", bitVector);
+
 
     // printf("Original %d\n", bitVector);
     // int x = byte2Num(&bitVector);
