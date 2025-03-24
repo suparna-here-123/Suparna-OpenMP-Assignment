@@ -12,10 +12,17 @@ int main(){
     //byte bitVector = 0b01010101;
     //printf("Original %d\n", bitVector);
 
-    byte x = 0x13;
-    byte proc = (x & 0xF0) >> 4;
-    printf("Proc : %d\n", proc);
-    func(proc);
+    // byte x = 0x13;
+    // byte proc = (x & 0xF0) >> 4;
+    // printf("Proc : %d\n", proc);
+    // func(proc);
+    // int x = 0;
+    // printf("%d\n", 1 << 0);
+
+    byte x = 4;
+    int y = 4;
+    printf("%d\n", x == y);
+
     // byte mem = x & 0x0F;
     // printf("Mem : %d\n", mem);
     // int arr[4] = {10, 20, 30, 40};
