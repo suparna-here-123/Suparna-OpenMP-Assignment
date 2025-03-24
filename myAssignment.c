@@ -121,11 +121,11 @@ int main( int argc, char * argv[] ) {
         // IMPLEMENT (DONE) - initialize the locks in msgBufferLocks
         omp_init_lock(&msgBufferLocks[ i ]);
     }
-    processorNode node;
-
+    
     // IMPLEMENT (DONE??) - Create the omp parallel region with an appropriate data environment
     #pragma omp parallel num_threads(numThreads) shared(messageBuffers)
     {
+        processorNode node;
         int threadId = omp_get_thread_num();
         initializeProcessor( threadId, &node, dirName );
         // IMPLEMENT (DONE)- wait for all processors to complete initialization before proceeding
@@ -231,7 +231,7 @@ int main( int argc, char * argv[] ) {
                         // Checking if there are already some other processors sharing this value
                         if (msg.bitVector != 0x00) { node.cache[cacheIndex].state = SHARED; }
                         else { node.cache[cacheIndex].state = EXCLUSIVE; }
-                                                
+                        waitingForReply = 0;  
                         break;
 
                     case WRITEBACK_INT:
@@ -322,7 +322,7 @@ int main( int argc, char * argv[] ) {
                         // Step 2 : updating directory to have only the requesting node as sole owner (invalid owners)
                         (node.directory)[memBlockAddr].state = EM;
                         (node.directory)[memBlockAddr].bitVector = flusherByte;
-
+                        waitingForReply = 1;
                         break;
 
                     case REPLY_ID:
@@ -352,6 +352,7 @@ int main( int argc, char * argv[] ) {
                         // after we receive INV_ACK from every sharer, but for that
                         // we will have to keep track of all the INV_ACKs.
                         // Instead, we will assume that INV does not fail.
+                        waitingForReply = 0;
                         break;
 
                     case INV:
@@ -362,7 +363,7 @@ int main( int argc, char * argv[] ) {
                         // a different block ), then do nothing
 
                         // Check to see if cacheline exists
-                        if (node.cache[cacheIndex].address != 0xFF){
+                        if (node.cache[cacheIndex].address == msg.address){
                             node.cache[cacheIndex].state = INV;
                         }
                         break;
@@ -434,6 +435,7 @@ int main( int argc, char * argv[] ) {
                             break;
                             
                         }
+                        waitingForReply = 1;
                         break;
 
                     case REPLY_WR:
@@ -450,6 +452,7 @@ int main( int argc, char * argv[] ) {
                         node.cache[cacheIndex].value = msg.value;
                         if (msg.bitVector == 0x00) { node.cache[cacheIndex].state = EXCLUSIVE; }
                         else { node.cache[cacheIndex].state = SHARED; }
+                        waitingForReply = 0;
                         break;
 
                     case WRITEBACK_INV:
