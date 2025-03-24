@@ -3,15 +3,25 @@
 
 typedef unsigned char byte;
 
+void func(int x)
+{
+    printf("%d\n", x);
+}
+
 int main(){
     //byte bitVector = 0b01010101;
     //printf("Original %d\n", bitVector);
 
-    int x = 0;
-    byte bX = 1 << x;
-    if (x == 0x00) { printf("Yes\n"); }
-    else { printf("No\n"); }
-    
+    byte x = 0x13;
+    byte proc = (x & 0xF0) >> 4;
+    printf("Proc : %d\n", proc);
+    func(proc);
+    // byte mem = x & 0x0F;
+    // printf("Mem : %d\n", mem);
+    // int arr[4] = {10, 20, 30, 40};
+    // printf("From proc %d\n", arr[proc]);
+    // printf("From mem %d\n", arr[mem]);
+    // printf("As int : %d\n", (int)proc);
 
     // int procNum = 7;
     // if (bitVector == 0x00){
