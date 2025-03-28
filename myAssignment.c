@@ -231,7 +231,6 @@ int main( int argc, char * argv[] ) {
                         // Checking if there are already some other processors sharing this value
                         if (msg.bitVector != 0x00) { node.cache[cacheIndex].state = SHARED; }
                         else { node.cache[cacheIndex].state = EXCLUSIVE; }
-                        waitingForReply = 0;  
                         break;
 
                     case WRITEBACK_INT:
@@ -310,19 +309,28 @@ int main( int argc, char * argv[] ) {
                         // sharers list
 
                         // Step 1 : Sending message
+                        // message upgradeReplyMsg;
+                        // upgradeReplyMsg.type = REPLY_ID;
+                        // upgradeReplyMsg.sender = threadId;
+                        // upgradeReplyMsg.address = msg.address;
+                        
+                        byte flusherByte = (1 << msg.sender);
+                        // upgradeReplyMsg.bitVector = (node.directory)[memBlockAddr].bitVector & ~flusherByte;    // excludes the requesting node here
+                        // sendMessage(msg.sender, upgradeReplyMsg);
+
+                        // // Step 2 : updating directory to have only the requesting node as sole owner (invalid owners)
+                        // (node.directory)[memBlockAddr].state = EM;
+                        // (node.directory)[memBlockAddr].bitVector = flusherByte;
+
+                        // case UPGRADE (in home node)
                         message upgradeReplyMsg;
                         upgradeReplyMsg.type = REPLY_ID;
                         upgradeReplyMsg.sender = threadId;
                         upgradeReplyMsg.address = msg.address;
-                        
-                        byte flusherByte = (1 << msg.sender);
-                        upgradeReplyMsg.bitVector = (node.directory)[memBlockAddr].bitVector & ~flusherByte;    // excludes the requesting node here
+                        upgradeReplyMsg.bitVector = (node.directory)[memBlockAddr].bitVector & ~flusherByte;
+                        upgradeReplyMsg.value = node.memory[memBlockAddr]; // <--- ADD THIS!
                         sendMessage(msg.sender, upgradeReplyMsg);
 
-                        // Step 2 : updating directory to have only the requesting node as sole owner (invalid owners)
-                        (node.directory)[memBlockAddr].state = EM;
-                        (node.directory)[memBlockAddr].bitVector = flusherByte;
-                        waitingForReply = 1;
                         break;
 
                     case REPLY_ID:
@@ -352,7 +360,6 @@ int main( int argc, char * argv[] ) {
                         // after we receive INV_ACK from every sharer, but for that
                         // we will have to keep track of all the INV_ACKs.
                         // Instead, we will assume that INV does not fail.
-                        waitingForReply = 0;
                         break;
 
                     case INV:
@@ -435,7 +442,6 @@ int main( int argc, char * argv[] ) {
                             break;
                             
                         }
-                        waitingForReply = 1;
                         break;
 
                     case REPLY_WR:
@@ -452,7 +458,6 @@ int main( int argc, char * argv[] ) {
                         node.cache[cacheIndex].value = msg.value;
                         if (msg.bitVector == 0x00) { node.cache[cacheIndex].state = EXCLUSIVE; }
                         else { node.cache[cacheIndex].state = SHARED; }
-                        waitingForReply = 0;
                         break;
 
                     case WRITEBACK_INV:
@@ -614,7 +619,7 @@ int main( int argc, char * argv[] ) {
                 if (node.cache[cacheIndex].address != 0xFF && node.cache[cacheIndex].state != INVALID)
                 {
                     // HOW TO "PROCESS" a read instruction??
-                    printf("Read %u from instruction\n", node.cache[cacheIndex].value);
+                    // printf("Read %u from instruction\n", node.cache[cacheIndex].value);
                 }
                 // Read-miss, send message
                 else{
@@ -661,7 +666,7 @@ int main( int argc, char * argv[] ) {
                         // if modified or exclusive, update cache directly as only this node
                         // contains the memory block, no network transactions required
                         default :
-                            printf("Write %u from instruction\n", instr.value);
+                            //printf("Write %u from instruction\n", instr.value);
                             node.cache[cacheIndex].value = instr.value;
                             break;
 
@@ -741,6 +746,7 @@ void handleCacheReplacement( int sender, cacheLine oldCacheLine ) {
     byte procNodeAddr = (oldCacheLine.address & 0xF0) >> 4;
     
     switch ( oldCacheLine.state ) {
+        case EXCLUSIVE:
         case SHARED:
             // IMPLEMENT - DONE?
             // If cache line was shared, inform home node about the eviction
@@ -859,30 +865,32 @@ void printProcessorState(int processorId, processorNode node) {
     printf("=======================================\n\n");
 
     // Print memory state
-    printf("----------- Memory State -----------\n");
-    printf("| Index |  Value  |\n");
-    printf("|-----------------|\n");
+    printf("-------- Memory State --------\n");
+    printf("| Index | Address |   Value  |\n");
+    printf("|----------------------------|\n");
     for (int i = 0; i < MEM_SIZE; i++) {
-        printf("|  %3d  |  %5d  |\n", i, node.memory[i]);
+        printf("|  %3d  |  0x%02X   |  %5d   |\n", i, ( processorId << 4 ) + i,
+                node.memory[i]);
     }
-    printf("------------------------------------\n\n");
+    printf("------------------------------\n\n");
 
     // Print directory state
-    printf("---------- Directory State ---------\n");
-    printf("| Index | State | BitVector      |\n");
-    printf("|--------------------------------|\n");
+    printf("------------ Directory State ---------------\n");
+    printf("| Index | Address | State |    BitVector   |\n");
+    printf("|------------------------------------------|\n");
     for (int i = 0; i < MEM_SIZE; i++) {
-        printf("|  %3d  |   %2s  |   0x%08B   |\n", 
-               i, dirStateStr[node.directory[i].state], node.directory[i].bitVector);
+        printf("|  %3d  |  0x%02X   |  %2s   |   0x%08B   |\n", i,
+                ( processorId << 4 ) + i, dirStateStr[node.directory[i].state],
+                node.directory[i].bitVector);
     }
-    printf("------------------------------------\n\n");
-
+    printf("--------------------------------------------\n\n");
+    
     // Print cache state
     printf("------------ Cache State ----------------\n");
-    printf("| Index | Address | Value |  State      |\n");
+    printf("| Index | Address | Value |    State    |\n");
     printf("|---------------------------------------|\n");
     for (int i = 0; i < CACHE_SIZE; i++) {
-        printf("|  %3d  |  0x%02X  |  %3d  |  %8s \t|\n", 
+        printf("|  %3d  |  0x%02X   |  %3d  |  %8s \t|\n", 
                i, node.cache[i].address, node.cache[i].value,
                cacheStateStr[node.cache[i].state]);
     }
