@@ -1,8 +1,0 @@
-* How to check if i'm the home node for a message? (LINE 250)
-* Why would I have cache replacement in REPLY_ID? It's a write-hit no? (LINE 318)
-* Should I write new value to cacheline in REPLY_ID, REPLY_WR? 
-* INV state -> cache not full so outOfIndex error?
-* REPLY_WR needs directoryState of memblock being sent?
-* How to store in memory? Indexation or just add at the end?
-* In write-miss on instruction, invalidating cache lines in sharers is automatically handled
-  under REPLY_ID after home node sends list of sharers no?
